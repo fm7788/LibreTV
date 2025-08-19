@@ -87,7 +87,7 @@ const CUSTOMER_SITES = {
     ikun: {
         api: 'https://ikunzyapi.com',
         name: 'iKun资源'
-    },
+    }
 };
 
 // 调用全局方法合并
