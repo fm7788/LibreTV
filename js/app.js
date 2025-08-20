@@ -605,12 +605,22 @@ function getCustomApiInfo(customApiIndex) {
 
 // 搜索功能 - 修改为支持多选API和多页结果
 async function search() {
-    // 密码保护校验
-    if (window.isPasswordProtected && window.isPasswordVerified) {
-        if (window.isPasswordProtected() && !window.isPasswordVerified()) {
-            showPasswordModal && showPasswordModal();
-            return;
+    // 强化的密码保护校验 - 防止绕过
+    try {
+        if (window.ensurePasswordProtection) {
+            window.ensurePasswordProtection();
+        } else {
+            // 兼容性检查
+            if (window.isPasswordProtected && window.isPasswordVerified) {
+                if (window.isPasswordProtected() && !window.isPasswordVerified()) {
+                    showPasswordModal && showPasswordModal();
+                    return;
+                }
+            }
         }
+    } catch (error) {
+        console.warn('Password protection check failed:', error.message);
+        return;
     }
     const query = document.getElementById('searchInput').value.trim();
 
@@ -632,60 +642,9 @@ async function search() {
 
         // 从所有选中的API源搜索
         let allResults = [];
-        const searchPromises = selectedAPIs.map(async (apiId) => {
-            try {
-                let apiUrl, apiName;
-                
-                // 处理自定义API
-                if (apiId.startsWith('custom_')) {
-                    const customIndex = apiId.replace('custom_', '');
-                    const customApi = getCustomApiInfo(customIndex);
-                    if (!customApi) return [];
-                    
-                    apiUrl = customApi.url + API_CONFIG.search.path + encodeURIComponent(query);
-                    apiName = customApi.name;
-                } else {
-                    // 内置API
-                    if (!API_SITES[apiId]) return [];
-                    apiUrl = API_SITES[apiId].api + API_CONFIG.search.path + encodeURIComponent(query);
-                    apiName = API_SITES[apiId].name;
-                }
-                
-                // 添加超时处理
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 8000);
-                
-                const response = await fetch(PROXY_URL + encodeURIComponent(apiUrl), {
-                    headers: API_CONFIG.search.headers,
-                    signal: controller.signal
-                });
-                
-                clearTimeout(timeoutId);
-                
-                if (!response.ok) {
-                    return [];
-                }
-                
-                const data = await response.json();
-                
-                if (!data || !data.list || !Array.isArray(data.list) || data.list.length === 0) {
-                    return [];
-                }
-                
-                // 添加源信息到每个结果
-                const results = data.list.map(item => ({
-                    ...item,
-                    source_name: apiName,
-                    source_code: apiId,
-                    api_url: apiId.startsWith('custom_') ? getCustomApiInfo(apiId.replace('custom_', ''))?.url : undefined
-                }));
-                
-                return results;
-            } catch (error) {
-                console.warn(`API ${apiId} 搜索失败:`, error);
-                return [];
-            }
-        });
+        const searchPromises = selectedAPIs.map(apiId => 
+            searchByAPIAndKeyWord(apiId, query)
+        );
 
         // 等待所有搜索请求完成
         const resultsArray = await Promise.all(searchPromises);
@@ -749,11 +708,11 @@ async function search() {
             // 使用HTML5 History API更新URL，不刷新页面
             window.history.pushState(
                 { search: query },
-                `搜索: ${query} - LibreTV`,
+                `搜索: ${query} - HAOqimi`,
                 `/s=${encodedQuery}`
             );
             // 更新页面标题
-            document.title = `搜索: ${query} - LibreTV`;
+            document.title = `搜索: ${query} - HAOqimi`;
         } catch (e) {
             console.error('更新浏览器历史失败:', e);
             // 如果更新URL失败，继续执行搜索
